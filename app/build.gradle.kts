@@ -59,5 +59,6 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-firestore-ktx")
+    implementation("androidx.navigation:navigation-compose:2.7.3")
     //implementation(platform(libs.firebase.bom))
 }
