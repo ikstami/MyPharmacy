@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,13 +26,6 @@ import androidx.navigation.compose.*
 import com.example.mypharmacy.data.model.Medicine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import androidx.navigation.navOptions
-
-import androidx.navigation.compose.rememberNavController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-
 
 class MainActivity : ComponentActivity() {
 
@@ -75,7 +69,7 @@ class MainActivity : ComponentActivity() {
         )
 
         NavigationBar {
-            val currentRoute = currentRoute(navController)
+            val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
             items.forEach { item ->
                 NavigationBarItem(
                     icon = { Icon(item.icon, null) },
@@ -87,7 +81,6 @@ class MainActivity : ComponentActivity() {
                             launchSingleTop = true
                             restoreState = true
                         }
-
                     }
                 )
             }
@@ -96,47 +89,177 @@ class MainActivity : ComponentActivity() {
 
     data class NavItem(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
-    @Composable
-    fun currentRoute(navController: NavHostController): String? {
-        return navController.currentBackStackEntryAsState().value?.destination?.route
-    }
-
     /** ========== Medicines Screen ========== */
+    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun MedicinesScreen() {
         val medicines by medicineRepo.allMedicines.collectAsState(initial = emptyList())
+        var showDialog by remember { mutableStateOf(false) }
+        var editedMedicine by remember { mutableStateOf<Medicine?>(null) }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFF7ECFF))))
-                .padding(16.dp)
-        ) {
-            Text("Моя аптечка", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(12.dp))
-            LazyColumn {
-                items(medicines) { medicine ->
-                    MedicineCard(medicine)
+        Scaffold(
+            floatingActionButton = {
+                FloatingActionButton(onClick = {
+                    editedMedicine = null
+                    showDialog = true
+                }) {
+                    Icon(Icons.Default.Add, contentDescription = "Добавить")
                 }
+            }
+        ) { padding ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
+                items(medicines) { medicine ->
+                    MedicineCardWithActions(
+                        medicine,
+                        onEdit = { editedMedicine = it; showDialog = true },
+                        onDelete = { lifecycleScope.launch { medicineRepo.delete(it) } }
+                    )
+                }
+            }
+
+            if (showDialog) {
+                MedicineDialog(
+                    medicine = editedMedicine,
+                    onDismiss = { showDialog = false },
+                    onSave = { med ->
+                        lifecycleScope.launch {
+                            if (editedMedicine == null) {
+                                medicineRepo.insert(med)
+                            } else {
+                                medicineRepo.update(med)
+                            }
+                            showDialog = false
+                        }
+                    }
+                )
             }
         }
     }
 
     @Composable
-    fun MedicineCard(medicine: Medicine) {
+    fun MedicineCardWithActions(
+        medicine: Medicine,
+        onEdit: (Medicine) -> Unit,
+        onDelete: (Medicine) -> Unit
+    ) {
         Card(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 6.dp)
+                .padding(8.dp)
+                .clickable { onEdit(medicine) }
         ) {
-            Column(Modifier.padding(16.dp)) {
-                Text(medicine.name, fontWeight = FontWeight.Bold)
-                Text(medicine.dosage, fontSize = 13.sp)
-                Spacer(Modifier.height(6.dp))
-                Text("⏰ ${medicine.expirationDate?.toDate()?.toString() ?: "-"}")
-                Text("📦 ${medicine.quantity}")
-                AssistChip(onClick = {}, label = { Text(medicine.category) })
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(medicine.name, fontWeight = FontWeight.Bold)
+                    Text("Дозировка: ${medicine.dosage}", fontSize = 14.sp)
+                    Text("Количество: ${medicine.quantity}", fontSize = 14.sp)
+                    Text("Категория: ${medicine.category}", fontSize = 14.sp)
+                }
+                IconButton(onClick = { onDelete(medicine) }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Удалить")
+                }
+            }
+        }
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun MedicineDialog(
+        medicine: Medicine?,
+        onDismiss: () -> Unit,
+        onSave: (Medicine) -> Unit
+    ) {
+        var name by remember { mutableStateOf(medicine?.name ?: "") }
+        var dosage by remember { mutableStateOf(medicine?.dosage ?: "") }
+        var quantity by remember { mutableStateOf(medicine?.quantity?.toString() ?: "") }
+        var category by remember { mutableStateOf(medicine?.category ?: "") }
+        var categories by remember { mutableStateOf(listOf<String>()) }
+
+        // Загружаем категории из Firebase один раз
+        LaunchedEffect(Unit) {
+            categories = categoryRepo.getAllCategories()
+        }
+
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(if (medicine == null) "Добавить лекарство" else "Редактировать") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Название") }
+                    )
+                    OutlinedTextField(
+                        value = dosage,
+                        onValueChange = { dosage = it },
+                        label = { Text("Дозировка") }
+                    )
+                    OutlinedTextField(
+                        value = quantity,
+                        onValueChange = { quantity = it },
+                        label = { Text("Количество") }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    DropdownMenuBox(
+                        selected = category,
+                        options = categories,
+                        onSelected = { category = it }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = name.isNotBlank(),
+                    onClick = {
+                        onSave(
+                            Medicine(
+                                id = medicine?.id ?: "",
+                                name = name,
+                                dosage = dosage,
+                                quantity = quantity.toIntOrNull() ?: 0,
+                                category = category
+                            )
+                        )
+                    }
+                ) { Text("Сохранить") }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text("Отмена") }
+            }
+        )
+    }
+
+    @Composable
+    fun DropdownMenuBox(selected: String, options: List<String>, onSelected: (String) -> Unit) {
+        var expanded by remember { mutableStateOf(false) }
+        Box {
+            OutlinedTextField(
+                value = selected,
+                onValueChange = {},
+                label = { Text("Категория") },
+                readOnly = true,
+                modifier = Modifier.clickable { expanded = true }
+            )
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                options.forEach { opt ->
+                    DropdownMenuItem(
+                        text = { Text(opt) },
+                        onClick = {
+                            onSelected(opt)
+                            expanded = false
+                        }
+                    )
+                }
             }
         }
     }
@@ -149,12 +272,10 @@ class MainActivity : ComponentActivity() {
         var categories by remember { mutableStateOf(listOf("Все")) }
         var medicines by remember { mutableStateOf(listOf<Medicine>()) }
 
-        // Загружаем категории из Firebase один раз
         LaunchedEffect(Unit) {
             categories = categoryRepo.getAllCategories().toMutableList().apply { add(0, "Все") }
         }
 
-        // Подписка на лекарства с фильтром
         LaunchedEffect(query, selectedCategory) {
             medicineRepo.allMedicines.collectLatest { list ->
                 medicines = list.filter {
@@ -172,9 +293,7 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxWidth(),
                 leadingIcon = { Icon(Icons.Default.Search, null) }
             )
-
             Spacer(Modifier.height(12.dp))
-
             Row {
                 categories.forEach {
                     FilterChip(
@@ -185,11 +304,9 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
-
             Spacer(Modifier.height(16.dp))
-
             LazyColumn {
-                items(medicines) { MedicineCard(it) }
+                items(medicines) { MedicineCardWithActions(it, {}, {}) }
             }
         }
     }
@@ -200,7 +317,6 @@ class MainActivity : ComponentActivity() {
         Column(Modifier.padding(16.dp)) {
             Text("История", fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
-            // Здесь можно реализовать историю добавлений/удалений
             Text("Здесь будет история операций")
         }
     }
