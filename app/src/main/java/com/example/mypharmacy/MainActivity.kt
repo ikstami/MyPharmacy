@@ -21,7 +21,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.mypharmacy.data.model.Medicine
 import kotlinx.coroutines.launch
 import java.util.UUID
-
+//trsr
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
 
