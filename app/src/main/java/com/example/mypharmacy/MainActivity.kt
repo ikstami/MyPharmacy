@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -26,6 +27,19 @@ import androidx.navigation.compose.*
 import com.example.mypharmacy.data.model.Medicine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import java.text.SimpleDateFormat
+import java.util.Locale
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Delete
+
+import com.google.firebase.Timestamp
+
+
+
+
 
 class MainActivity : ComponentActivity() {
 
@@ -146,6 +160,12 @@ class MainActivity : ComponentActivity() {
         onEdit: (Medicine) -> Unit,
         onDelete: (Medicine) -> Unit
     ) {
+        val sdf = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+        val expirationDateStr = medicine.expirationDate?.toDate()?.let { sdf.format(it) } ?: "-"
+        val daysLeft = medicine.expirationDate?.toDate()?.let {
+            ((it.time - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).toInt()
+        } ?: -1
+
         Card(
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
@@ -163,6 +183,11 @@ class MainActivity : ComponentActivity() {
                     Text("Дозировка: ${medicine.dosage}", fontSize = 14.sp)
                     Text("Количество: ${medicine.quantity}", fontSize = 14.sp)
                     Text("Категория: ${medicine.category}", fontSize = 14.sp)
+                    Text(
+                        "Срок годности: $expirationDateStr",
+                        color = if (daysLeft in 0..30) Color.Red else Color.Black,
+                        fontWeight = if (daysLeft in 0..30) FontWeight.Bold else FontWeight.Normal
+                    )
                 }
                 IconButton(onClick = { onDelete(medicine) }) {
                     Icon(Icons.Default.Delete, contentDescription = "Удалить")
@@ -183,8 +208,8 @@ class MainActivity : ComponentActivity() {
         var quantity by remember { mutableStateOf(medicine?.quantity?.toString() ?: "") }
         var category by remember { mutableStateOf(medicine?.category ?: "") }
         var categories by remember { mutableStateOf(listOf<String>()) }
+        var expiration by remember { mutableStateOf(medicine?.expirationDate?.toDate()) }
 
-        // Загружаем категории из Firebase один раз
         LaunchedEffect(Unit) {
             categories = categoryRepo.getAllCategories()
         }
@@ -202,19 +227,51 @@ class MainActivity : ComponentActivity() {
                     OutlinedTextField(
                         value = dosage,
                         onValueChange = { dosage = it },
-                        label = { Text("Дозировка") }
+                        label = { Text("Дозировка") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
-                    OutlinedTextField(
-                        value = quantity,
-                        onValueChange = { quantity = it },
-                        label = { Text("Количество") }
-                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = {
+                            val current = quantity.toIntOrNull() ?: 0
+                            if (current > 0) quantity = (current - 1).toString()
+                        }) { Icon(Icons.Default.Remove, contentDescription = "Минус") }
+
+                        OutlinedTextField(
+                            value = quantity,
+                            onValueChange = { quantity = it.filter { ch -> ch.isDigit() } },
+                            label = { Text("Количество") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        IconButton(onClick = {
+                            val current = quantity.toIntOrNull() ?: 0
+                            quantity = (current + 1).toString()
+                        }) { Icon(Icons.Default.Add, contentDescription = "Плюс") }
+                    }
+
                     Spacer(Modifier.height(8.dp))
                     DropdownMenuBox(
                         selected = category,
                         options = categories,
                         onSelected = { category = it }
                     )
+
+                    Spacer(Modifier.height(8.dp))
+                    // Дата истечения
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val expStr = expiration?.let { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(it) } ?: ""
+                        OutlinedTextField(
+                            value = expStr,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Срок годности") },
+                            modifier = Modifier.clickable {
+                                // Можно подключить DatePickerDialog здесь
+                            }
+                        )
+                    }
                 }
             },
             confirmButton = {
@@ -227,7 +284,8 @@ class MainActivity : ComponentActivity() {
                                 name = name,
                                 dosage = dosage,
                                 quantity = quantity.toIntOrNull() ?: 0,
-                                category = category
+                                category = category,
+                                expirationDate = expiration?.let { Timestamp(it) }
                             )
                         )
                     }
@@ -248,7 +306,9 @@ class MainActivity : ComponentActivity() {
                 onValueChange = {},
                 label = { Text("Категория") },
                 readOnly = true,
-                modifier = Modifier.clickable { expanded = true }
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = true }
             )
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 options.forEach { opt ->
@@ -317,7 +377,8 @@ class MainActivity : ComponentActivity() {
         Column(Modifier.padding(16.dp)) {
             Text("История", fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
-            Text("Здесь будет история операций")
+            Text("Здесь будет история добавления/удаления/редактирования")
+            // Можно потом подключить Firebase коллекцию history и LazyColumn
         }
     }
 
@@ -349,3 +410,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
