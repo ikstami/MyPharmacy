@@ -27,7 +27,7 @@ import androidx.navigation.compose.*
 import com.example.mypharmacy.data.model.Medicine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import androidx.compose.ui.text.input.KeyboardOptions
+//import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -36,6 +36,9 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Delete
 
 import com.google.firebase.Timestamp
+import android.app.DatePickerDialog
+import androidx.compose.ui.platform.LocalContext
+import java.util.Calendar
 
 
 
