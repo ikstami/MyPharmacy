@@ -6,7 +6,7 @@ data class Medicine(
     val id: String = "",
     val name: String = "",
     val dosage: String = "",
-    val quantity: Int = 0,
+    val quantity: String = "",
     val category: String = "",
     val manufacturer: String = "",
     val description: String = "",
