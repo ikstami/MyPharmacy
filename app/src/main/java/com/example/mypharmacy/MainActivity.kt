@@ -494,6 +494,7 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { showDosageUnitDropdown = true },
+                                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
                                 trailingIcon = {
                                     Icon(
                                         Icons.Default.ArrowDropDown,
@@ -510,7 +511,7 @@ class MainActivity : ComponentActivity() {
                                 dosageUnits.forEach { unit ->
                                     DropdownMenuItem(
                                         text = {
-                                            Text(unit)
+                                            Text(unit, fontSize = 12.sp)
                                         },
                                         onClick = {
                                             dosageUnit = unit
@@ -578,6 +579,7 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { showQuantityUnitDropdown = true },
+                                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
                                 trailingIcon = {
                                     Icon(
                                         Icons.Default.ArrowDropDown,
@@ -605,7 +607,8 @@ class MainActivity : ComponentActivity() {
                                                     "пак" -> "пак (пакеты)"
                                                     "уп" -> "уп (упаковки)"
                                                     else -> unit
-                                                }
+                                                },
+                                                fontSize = 12.sp
                                             )
                                         },
                                         onClick = {
@@ -633,6 +636,7 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { showCategoryDropdown = true },
+                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
                             trailingIcon = {
                                 Icon(
                                     Icons.Default.ArrowDropDown,
@@ -651,7 +655,8 @@ class MainActivity : ComponentActivity() {
                                     text = {
                                         Text(
                                             "Категорий пока нет",
-                                            color = Color.Gray
+                                            color = Color.Gray,
+                                            fontSize = 12.sp
                                         )
                                     },
                                     onClick = {}
