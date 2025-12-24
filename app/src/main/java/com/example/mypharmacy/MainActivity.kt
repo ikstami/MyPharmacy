@@ -328,7 +328,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // Описание лекарства (если есть)
-                if (!medicine.description.isNullOrEmpty()) {
+                if (medicine.description.isNotEmpty()) {
                     Text(
                         text = medicine.description,
                         fontSize = 14.sp,
