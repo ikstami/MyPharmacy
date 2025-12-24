@@ -40,7 +40,14 @@ import android.app.DatePickerDialog
 import androidx.compose.ui.platform.LocalContext
 import java.util.Calendar
 
-
+import com.google.firebase.firestore.FirebaseFirestore
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import java.util.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.rememberDatePickerState
 
 
 
@@ -49,20 +56,17 @@ class MainActivity : ComponentActivity() {
     private val medicineRepo by lazy { (application as MyPharmacyApp).medicineRepository }
     private val categoryRepo by lazy { (application as MyPharmacyApp).categoryRepository }
 
+    private val history = mutableStateListOf<String>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            MyPharmacyAppUI()
-        }
+        setContent { MyPharmacyAppUI() }
     }
 
     @Composable
     fun MyPharmacyAppUI() {
         val navController = rememberNavController()
-
-        Scaffold(
-            bottomBar = { BottomNavigationBar(navController) }
-        ) { padding ->
+        Scaffold(bottomBar = { BottomNavigationBar(navController) }) { padding ->
             NavHost(
                 navController = navController,
                 startDestination = "medicines",
@@ -84,7 +88,6 @@ class MainActivity : ComponentActivity() {
             NavItem("history", "История", Icons.Default.List),
             NavItem("settings", "Настройки", Icons.Default.Settings)
         )
-
         NavigationBar {
             val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
             items.forEach { item ->
@@ -130,10 +133,15 @@ class MainActivity : ComponentActivity() {
                     .padding(padding)
             ) {
                 items(medicines) { medicine ->
-                    MedicineCardWithActions(
+                    MedicineCard(
                         medicine,
                         onEdit = { editedMedicine = it; showDialog = true },
-                        onDelete = { lifecycleScope.launch { medicineRepo.delete(it) } }
+                        onDelete = { medicineToDelete ->
+                            lifecycleScope.launch {
+                                medicineRepo.delete(medicineToDelete)
+                                addHistory("Удалено", medicineToDelete.name)
+                            }
+                        }
                     )
                 }
             }
@@ -146,8 +154,10 @@ class MainActivity : ComponentActivity() {
                         lifecycleScope.launch {
                             if (editedMedicine == null) {
                                 medicineRepo.insert(med)
+                                addHistory("Добавлено", med.name)
                             } else {
                                 medicineRepo.update(med)
+                                addHistory("Изменено", med.name)
                             }
                             showDialog = false
                         }
@@ -158,7 +168,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun MedicineCardWithActions(
+    fun MedicineCard(
         medicine: Medicine,
         onEdit: (Medicine) -> Unit,
         onDelete: (Medicine) -> Unit
@@ -170,7 +180,6 @@ class MainActivity : ComponentActivity() {
         } ?: -1
 
         Card(
-            shape = RoundedCornerShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp)
@@ -188,7 +197,11 @@ class MainActivity : ComponentActivity() {
                     Text("Категория: ${medicine.category}", fontSize = 14.sp)
                     Text(
                         "Срок годности: $expirationDateStr",
-                        color = if (daysLeft in 0..30) Color.Red else Color.Black,
+                        color = when {
+                            daysLeft < 0 -> Color.Gray
+                            daysLeft in 0..30 -> Color.Red
+                            else -> Color.Black
+                        },
                         fontWeight = if (daysLeft in 0..30) FontWeight.Bold else FontWeight.Normal
                     )
                 }
@@ -199,6 +212,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** ========== Medicine Dialog ========== */
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun MedicineDialog(
@@ -210,11 +224,42 @@ class MainActivity : ComponentActivity() {
         var dosage by remember { mutableStateOf(medicine?.dosage ?: "") }
         var quantity by remember { mutableStateOf(medicine?.quantity?.toString() ?: "") }
         var category by remember { mutableStateOf(medicine?.category ?: "") }
-        var categories by remember { mutableStateOf(listOf<String>()) }
         var expiration by remember { mutableStateOf(medicine?.expirationDate?.toDate()) }
 
-        LaunchedEffect(Unit) {
-            categories = categoryRepo.getAllCategories()
+        // Для управления DatePicker
+        val context = LocalContext.current
+        var showDatePicker by remember { mutableStateOf(false) }
+
+        // Для Material3 DatePicker (более современный подход)
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = expiration?.time ?: System.currentTimeMillis()
+        )
+
+        if (showDatePicker) {
+            DatePickerDialog(
+                onDismissRequest = { showDatePicker = false },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            datePickerState.selectedDateMillis?.let {
+                                expiration = Date(it)
+                            }
+                            showDatePicker = false
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showDatePicker = false }
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            ) {
+                DatePicker(state = datePickerState)
+            }
         }
 
         AlertDialog(
@@ -225,15 +270,22 @@ class MainActivity : ComponentActivity() {
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = { Text("Название") }
+                        label = { Text("Название") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(Modifier.height(8.dp))
+
                     OutlinedTextField(
                         value = dosage,
                         onValueChange = { dosage = it },
                         label = { Text("Дозировка") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(8.dp))
+
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = {
                             val current = quantity.toIntOrNull() ?: 0
@@ -245,7 +297,8 @@ class MainActivity : ComponentActivity() {
                             onValueChange = { quantity = it.filter { ch -> ch.isDigit() } },
                             label = { Text("Количество") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
                         )
 
                         IconButton(onClick = {
@@ -253,28 +306,38 @@ class MainActivity : ComponentActivity() {
                             quantity = (current + 1).toString()
                         }) { Icon(Icons.Default.Add, contentDescription = "Плюс") }
                     }
-
                     Spacer(Modifier.height(8.dp))
-                    DropdownMenuBox(
-                        selected = category,
-                        options = categories,
-                        onSelected = { category = it }
+
+                    OutlinedTextField(
+                        value = category,
+                        onValueChange = { category = it },
+                        label = { Text("Категория") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
                     )
-
                     Spacer(Modifier.height(8.dp))
-                    // Дата истечения
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        val expStr = expiration?.let { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(it) } ?: ""
-                        OutlinedTextField(
-                            value = expStr,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Срок годности") },
-                            modifier = Modifier.clickable {
-                                // Можно подключить DatePickerDialog здесь
-                            }
-                        )
-                    }
+
+                    // Срок годности - кликабельное поле
+                    OutlinedTextField(
+                        value = expiration?.let {
+                            SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(it)
+                        } ?: "",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Срок годности") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showDatePicker = true },
+                        trailingIcon = {
+                            Icon(
+                                Icons.Default.CalendarToday,
+                                contentDescription = "Выбрать дату",
+                                modifier = Modifier.clickable { showDatePicker = true }
+                            )
+                        }
+                    )
                 }
             },
             confirmButton = {
@@ -298,33 +361,6 @@ class MainActivity : ComponentActivity() {
                 TextButton(onClick = onDismiss) { Text("Отмена") }
             }
         )
-    }
-
-    @Composable
-    fun DropdownMenuBox(selected: String, options: List<String>, onSelected: (String) -> Unit) {
-        var expanded by remember { mutableStateOf(false) }
-        Box {
-            OutlinedTextField(
-                value = selected,
-                onValueChange = {},
-                label = { Text("Категория") },
-                readOnly = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = true }
-            )
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                options.forEach { opt ->
-                    DropdownMenuItem(
-                        text = { Text(opt) },
-                        onClick = {
-                            onSelected(opt)
-                            expanded = false
-                        }
-                    )
-                }
-            }
-        }
     }
 
     /** ========== Search Screen ========== */
@@ -369,7 +405,7 @@ class MainActivity : ComponentActivity() {
             }
             Spacer(Modifier.height(16.dp))
             LazyColumn {
-                items(medicines) { MedicineCardWithActions(it, {}, {}) }
+                items(medicines) { MedicineCard(it, {}, {}) }
             }
         }
     }
@@ -380,8 +416,12 @@ class MainActivity : ComponentActivity() {
         Column(Modifier.padding(16.dp)) {
             Text("История", fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
-            Text("Здесь будет история добавления/удаления/редактирования")
-            // Можно потом подключить Firebase коллекцию history и LazyColumn
+            LazyColumn {
+                items(history) { h ->
+                    Text(h)
+                    Spacer(Modifier.height(4.dp))
+                }
+            }
         }
     }
 
@@ -412,5 +452,16 @@ class MainActivity : ComponentActivity() {
             Switch(checked = checked, onCheckedChange = { checked = it })
         }
     }
+
+    private fun addHistory(action: String, name: String) {
+        val timestamp = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+        history.add(0, "$timestamp - $action - $name")
+    }
 }
+
+
+
+
+
+
 
